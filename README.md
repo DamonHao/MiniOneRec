@@ -271,6 +271,29 @@ bash evaluate.sh \
 
 ---
 
+## 🤖 Supported LLM Providers
+
+MiniOneRec supports multiple LLM providers for text enrichment tasks (e.g., user preference and item characteristic extraction). Configure the provider in your `api_info` dictionary:
+
+| Provider | `provider` value | Default Base URL | Example Models |
+|----------|-----------------|------------------|----------------|
+| OpenAI | `"openai"` | — | `text-davinci-003` |
+| DeepSeek | `"deepseek"` | `https://api.deepseek.com` | `deepseek-chat` |
+| [MiniMax](https://www.minimaxi.com) | `"minimax"` | `https://api.minimax.io/v1` | `MiniMax-M2.7`, `MiniMax-M2.5` |
+
+**Example — using MiniMax:**
+
+```python
+api_info = {
+    "provider": "minimax",
+    "api_key_list": ["your-minimax-api-key"],
+    "base_url": "https://api.minimax.io/v1",  # optional, this is the default
+}
+get_res_batch("MiniMax-M2.7", prompt_list, max_tokens=512, api_info=api_info)
+```
+
+---
+
 ## 📝 Upcoming Features
 
 We are actively extending MiniOneRec’s capabilities. The following enhancements are already on our roadmap:

@@ -20,11 +20,13 @@ import threading
 
 
 def get_res_batch(model_name, prompt_list, max_tokens, api_info):
-    
+
     provider = api_info.get("provider", "openai")
-    
+
     if provider == "deepseek":
         return get_deepseek_batch(model_name, prompt_list, max_tokens, api_info)
+    elif provider == "minimax":
+        return get_minimax_batch(model_name, prompt_list, max_tokens, api_info)
     else:
         return get_openai_batch(model_name, prompt_list, max_tokens, api_info)
 
@@ -173,6 +175,102 @@ def _single_deepseek_request(model_name, prompt, max_tokens, api_info, base_url,
     return ""
 
 
+def get_minimax_batch(model_name, prompt_list, max_tokens, api_info):
+    if not prompt_list:
+        return []
+
+    base_url = api_info.get("base_url", "https://api.minimax.io/v1")
+
+    max_workers = min(256, len(prompt_list))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        for i, prompt in enumerate(prompt_list):
+            future = executor.submit(
+                _single_minimax_request,
+                model_name, prompt, max_tokens, api_info, base_url, i
+            )
+            futures.append(future)
+
+        results = []
+        for i, future in enumerate(futures):
+            try:
+                result = future.result(timeout=120)
+                results.append(result)
+            except Exception as e:
+                print(f"Request {i+1} failed: {e}")
+                results.append("")
+
+        return results
+
+
+def _single_minimax_request(model_name, prompt, max_tokens, api_info, base_url, request_id):
+    api_key = api_info["api_key_list"][-1]
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    # MiniMax temperature range is [0.0, 1.0]; clamp accordingly
+    temperature = min(max(api_info.get("temperature", 0.4), 0.0), 1.0)
+
+    payload = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": 1,
+        "stream": False
+    }
+
+    max_retries = 3
+    retry_count = 0
+
+    while retry_count < max_retries:
+        try:
+            import random
+            delay = random.uniform(0.01, 0.03) * request_id
+            time.sleep(delay)
+
+            response = requests.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                content = result['choices'][0]['message']['content'].strip()
+                # Strip <think>...</think> tags from MiniMax reasoning models
+                content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+                return content
+
+            elif response.status_code == 429:
+                retry_delay = (2 ** retry_count) * random.uniform(1, 2)
+                print(f"Request {request_id+1} rate limited, waiting {retry_delay:.1f}s before retry")
+                time.sleep(retry_delay)
+                retry_count += 1
+                continue
+
+            else:
+                print(f"Request {request_id+1} error: {response.status_code}")
+                retry_count += 1
+                time.sleep(1)
+                continue
+
+        except Exception as e:
+            print(f"Request {request_id+1} exception: {e}")
+            retry_count += 1
+            time.sleep(1)
+
+    return ""
 
 
 def check_path(path):

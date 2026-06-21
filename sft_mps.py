@@ -306,10 +306,20 @@ def train(
         )
     model.to(resolved_device)
 
+    # data.py 中的数据集会在临时 Pandas Series 上解析字符串字段；该操作不会写回
+    # 原始 DataFrame，但会触发 SettingWithCopyWarning，因此在独立 MPS 入口中屏蔽它。
     warnings.filterwarnings("ignore", category=pd.errors.SettingWithCopyWarning)
     category_text = CATEGORY_NAMES[category]
+
+    # 采用多任务 SFT，而不是只学习“历史 SID -> 下一个 SID”：
+    # 1. SidSFTDataset 学习核心序列推荐任务；
+    # 2. SidItemFeatDataset 建立商品标题与 SID 的双向语义映射；
+    # 3. FusionSeqRecDataset 将 SID 交互历史与目标商品标题关联起来。
+    # 三个数据集返回相同的 input_ids/attention_mask/labels 结构，因此可以串接。
+    # 注意：sample 会分别作用于每个子数据集；sample=8 时总训练量约为 24 条。
     train_data = ConcatDataset(
         [
+            # 核心任务：历史 SID 序列 -> 下一个 item 的 SID。
             SidSFTDataset(
                 train_file=train_file,
                 tokenizer=tokenizer,
@@ -318,6 +328,7 @@ def train(
                 seed=seed,
                 category=category_text,
             ),
+            # 辅助任务：item title -> SID，以及 SID -> item title。
             SidItemFeatDataset(
                 item_file=item_meta_path,
                 index_file=sid_index_path,
@@ -327,6 +338,7 @@ def train(
                 seed=seed,
                 category=category_text,
             ),
+            # 融合任务：历史 SID 序列 -> 下一个 item 的自然语言标题。
             FusionSeqRecDataset(
                 train_file=train_file,
                 item_file=item_meta_path,
@@ -339,6 +351,9 @@ def train(
             ),
         ]
     )
+
+    # 验证集只保留核心推荐任务，使 eval_loss 明确反映“下一 item SID 预测”，
+    # 避免 title/SID 映射和标题生成任务的不同难度稀释该指标。
     eval_data = SidSFTDataset(
         train_file=eval_file,
         tokenizer=tokenizer,
@@ -347,6 +362,8 @@ def train(
         seed=seed,
         category=category_text,
     )
+
+    # Trainer 使用 Hugging Face Dataset；转换后统一按 seed 打乱，保证可复现。
     hf_train_dataset = _to_hf_dataset(train_data, seed)
     hf_eval_dataset = _to_hf_dataset(eval_data, seed)
 

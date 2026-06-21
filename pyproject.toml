@@ -1,0 +1,37 @@
+[project]
+name = "minionerec-local"
+version = "0.1.0"
+description = "Apple Silicon MPS environment for the MiniOneRec local pipeline"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "accelerate==1.10.1",
+    "datasets==4.2.0",
+    "einops==0.8.0",
+    "fire==0.7.1",
+    "k-means-constrained>=0.7,<1",
+    "numpy==1.26.3",
+    "openai==0.28.1",
+    "pandas==2.2.2",
+    "polars>=1.0,<2",
+    "pyyaml==6.0.1",
+    "safetensors==0.6.2",
+    "scikit-learn>=1.5,<2",
+    "scipy==1.14.0",
+    "torch==2.6.0",
+    "tqdm==4.67.1",
+    "transformers==4.57.1",
+    "trl==0.24.0",
+    "wandb==0.22.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
